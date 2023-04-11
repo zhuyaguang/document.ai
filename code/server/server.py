@@ -1,9 +1,21 @@
 from flask import Flask
 from flask import render_template
 from flask import request
-from qdrant_client import QdrantClient
 import openai
 import os
+from pymilvus import (
+    connections,
+    utility,
+    FieldSchema,
+    CollectionSchema,
+    DataType,
+    Collection,
+)
+
+openai.api_key = "api-key"
+openai.api_base =  "endpoint" # your endpoint should look like the following https://YOUR_RESOURCE_NAME.openai.azure.com/
+openai.api_type = 'azure'
+openai.api_version = '2023-03-15-preview' # this may change in the future
 
 app = Flask(__name__)
 
@@ -20,14 +32,12 @@ def prompt(question, answers):
     system:
     你是一个医院问诊机器人
     """
-    demo_q = '使用以下段落来回答问题："成人头疼，流鼻涕是感冒还是过敏？"\n1. 普通感冒：您会出现喉咙发痒或喉咙痛，流鼻涕，流清澈的稀鼻涕（液体），有时轻度发热。\n2. 常年过敏：症状包括鼻塞或流鼻涕，鼻、口或喉咙发痒，眼睛流泪、发红、发痒、肿胀，打喷嚏。'
-    demo_a = '成人出现头痛和流鼻涕的症状，可能是由于普通感冒或常年过敏引起的。如果病人出现咽喉痛和咳嗽，感冒的可能性比较大；而如果出现口、喉咙发痒、眼睛肿胀等症状，常年过敏的可能性比较大。'
-    system = '你是一个医院问诊机器人'
+    demo_q = '使用以下段落来回答问题："怎么登录瑶光OS操作系统？"\n1. 登录：瑶光OS（http://alkaidos.cn/）仅面向实验室内部开放，支持通过之江实验室OA账号一键登录。\n2. 实验室OA登录：点击”之江实验室账号登录“后，会自动跳转到之江实验室登录页，在这里输入你的之江实验室账号并点登录后，会自动跳转并登录瑶光OS。\n3. 登录页：1）点击”之江实验室账号登录“，即可通过之江实验室账号直接登录瑶光OS。（2）点击”使用其他方式登录“，即通过”企业用户邮箱“或”个人手机号“登录。注意：之江实验室员工一键登录瑶光OS系统一次后，后续也能直接通过之江邮箱在瑶光OS系统登录，无需再走邮箱注册流程。（3）点击“免费注册”，即跳转到“企业用户邮箱”或”个人手机号“注册页面。'
+    demo_a = '怎么登录瑶光OS操作系统，瑶光OS（http://alkaidos.cn/）仅面向实验室内部开放，支持通过之江实验室OA账号一键登录。可以通过之江实验室账号直接登录瑶光OS，也可以1）点击”之江实验室账号登录“，即可通过之江实验室账号直接登录瑶光OS。（2）点击”使用其他方式登录“，即通过”企业用户邮箱“或”个人手机号“登录。注意：之江实验室员工一键登录瑶光OS系统一次后，后续也能直接通过之江邮箱在瑶光OS系统登录，无需再走邮箱注册流程。（3）点击“免费注册”，即跳转到“企业用户邮箱”或”个人手机号“注册页面。'
+    system = '你是一个云计算问题相关文档机器人'
     q = '使用以下段落来回答问题，如果段落内容不相关就返回未查到相关信息："'
-    q += question + '"'
-    # 带有索引的格式
-    for index, answer in enumerate(answers):
-        q += str(index + 1) + '. ' + str(answer['title']) + ': ' + str(answer['text']) + '\n'
+    q += question + '"' + answers
+    
 
     """
     system:代表的是你要让GPT生成内容的方向，在这个案例中我要让GPT生成的内容是医院问诊机器人的回答，所以我把system设置为医院问诊机器人
@@ -51,44 +61,56 @@ def query(text):
     payload中包含了title和text，title是疾病的标题，text是摘要
     最后使用openai的ChatCompletion API进行对话生成
     """
-    client = QdrantClient("127.0.0.1", port=6333)
-    collection_name = "data_collection"
-    openai.api_key = os.getenv("OPENAI_API_KEY")
-    sentence_embeddings = openai.Embedding.create(
-        model="text-embedding-ada-002",
-        input=text
+    
+    connections.connect("default", host="10.101.32.33", port="19530")
+    collection = Collection("mydata")      # Get an existing collection.
+    collection.load()
+
+    response = openai.Embedding.create(
+        input=text,
+        engine="emb"
     )
     """
     因为提示词的长度有限，所以我只取了搜索结果的前三个，如果想要更多的搜索结果，可以把limit设置为更大的值
     """
-    search_result = client.search(
-        collection_name=collection_name,
-        query_vector=sentence_embeddings["data"][0]["embedding"],
-        limit=3,
-        search_params={"exact": False, "hnsw_ef": 128}
+    vectors_to_search = response["data"][0]["embedding"]
+    search_params = {
+        "metric_type": "L2",
+        "params": {"nprobe": 1},
+    }
+    result = collection.search(
+	data=[vectors_to_search], 
+	anns_field="embeddings", 
+	param=search_params,
+	limit=2, 
+	expr=None,
+	consistency_level="Strong",
+    output_fields=["title","text"]
     )
     answers = []
-    tags = []
+    qtext = []
+    for hits in result:
+        for hit in hits:
+            a = f"hit: {hit}, title field: {hit.entity.get('title')},text field: {hit.entity.get('text')}\n"
+            t = hit.entity.get('text')
+            qtext.append(t)
+            answers.append(a)
+
+    
 
     """
     因为提示词的长度有限，每个匹配的相关摘要我在这里只取了前300个字符，如果想要更多的相关摘要，可以把这里的300改为更大的值
     """
-    for result in search_result:
-        if len(result.payload["text"]) > 300:
-            summary = result.payload["text"][:300]
-        else:
-            summary = result.payload["text"]
-        answers.append({"title": result.payload["title"], "text": summary})
-
     completion = openai.ChatCompletion.create(
         temperature=0.7,
-        model="gpt-3.5-turbo",
-        messages=prompt(text, answers),
+        engine="patent",
+        max_tokens=100,
+        messages=prompt(text, ''.join(qtext)),
     )
-
+    tags = []
     return {
-        "answer": completion.choices[0].message.content,
-        "tags": tags,
+        "answer": completion["choices"][0]["message"]["content"],
+        "tags": [],
     }
 
 

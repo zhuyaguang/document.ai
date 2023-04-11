@@ -9,12 +9,10 @@
 
 ## 前期准备
 
-本服务需要使用Qdrant向量数据库，所以需要先安装Qdrant，为了方便可以使用docker启动：
-`docker run -p 6333:6333 \
--v $(pwd)/qdrant_storage:/qdrant/storage \
-qdrant/qdrant
-`
+本服务需要使用milvus向量数据库，所以需要先安装milvus，为了方便可以使用docker启动：
+`wget https://github.com/milvus-io/milvus/releases/download/v2.2.5/milvus-standalone-docker-compose.yml -O docker-compose.yml`
+`sudo docker-compose up -d`
 
-## 关于Qdrant向量数据库
+## 关于milvus 向量数据库
 
-你可以查看Qdrant的官方文档：https://qdrant.tech/documentation/
+你可以查看milvus的官方文档：https://milvus.io/docs

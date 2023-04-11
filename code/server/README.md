@@ -6,7 +6,7 @@
 
 `pip install -r requirements.txt`
 
-## 设置OPENAI_API_KEY
+## 设置Azure_API_KEY
 
 `export OPENAI_API_KEY=sk-xxxxxx`
 
