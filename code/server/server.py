@@ -12,7 +12,7 @@ from pymilvus import (
     Collection,
 )
 
-openai.api_key = "api-key"
+openai.api_key = "key"
 openai.api_base =  "endpoint" # your endpoint should look like the following https://YOUR_RESOURCE_NAME.openai.azure.com/
 openai.api_type = 'azure'
 openai.api_version = '2023-03-15-preview' # this may change in the future
@@ -62,7 +62,7 @@ def query(text):
     最后使用openai的ChatCompletion API进行对话生成
     """
     
-    connections.connect("default", host="10.101.32.33", port="19530")
+    connections.connect("default", host="milvus ip", port="19530")
     collection = Collection("mydata")      # Get an existing collection.
     collection.load()
 
@@ -78,6 +78,7 @@ def query(text):
         "metric_type": "L2",
         "params": {"nprobe": 1},
     }
+    print(vectors_to_search)
     result = collection.search(
 	data=[vectors_to_search], 
 	anns_field="embeddings", 
@@ -104,7 +105,7 @@ def query(text):
     completion = openai.ChatCompletion.create(
         temperature=0.7,
         engine="patent",
-        max_tokens=100,
+        max_tokens=200,
         messages=prompt(text, ''.join(qtext)),
     )
     tags = []
